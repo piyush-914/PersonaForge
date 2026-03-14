@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+strands-agents
+strands-agents-tools
+google-genai
+ddgs
+requests
+beautifulsoup4
+uv

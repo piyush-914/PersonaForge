@@ -9,6 +9,8 @@ export interface IAgent extends Document {
   domain: string
   responseStyle: string
   guardrails: string[]
+  tools: string[]
+  apiKeys: { [key: string]: string }
   memoryMode: 'stateless' | 'session' | 'persistent'
   responseLength: 'short' | 'medium' | 'long'
   safetyFilters: boolean
@@ -62,6 +64,15 @@ const AgentSchema = new Schema<IAgent>({
     type: String,
     maxlength: [100, 'Each guardrail cannot exceed 100 characters']
   }],
+  tools: [{
+    type: String,
+    enum: ['send_email', 'create_calendar_event', 'web_search', 'visit_url', 'read_file', 'aws_docs_mcp']
+  }],
+  apiKeys: {
+    type: Map,
+    of: String,
+    default: {}
+  },
   memoryMode: {
     type: String,
     enum: ['stateless', 'session', 'persistent'],

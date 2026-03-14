@@ -125,6 +125,23 @@ export const authOptions: NextAuthOptions = {
           token.userId = user.id
         }
       }
+
+      // Ensure we always have the MongoDB _id as userId
+      if (token.email && (!token.userId || !/^[0-9a-fA-F]{24}$/.test(token.userId as string))) {
+        try {
+          await connectDB()
+          const dbUser = await User.findOne({ email: token.email })
+          if (dbUser) {
+            token.userId = dbUser._id.toString()
+            token.plan = dbUser.plan
+            token.isVerified = dbUser.isVerified
+            token.agentsCreated = dbUser.agentsCreated
+          }
+        } catch (error) {
+          console.error("Error ensuring userId in JWT:", error)
+        }
+      }
+
       return token
     },
     async session({ session, token }) {

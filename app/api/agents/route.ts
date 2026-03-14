@@ -27,6 +27,14 @@ export async function GET(request: NextRequest) {
         )
       }
       userId = session.user.id
+
+      // RESILIENCE: If userId is not a valid ObjectId, try to find the user by email
+      if (!/^[0-9a-fA-F]{24}$/.test(userId) && session.user.email) {
+        const dbUser = await User.findOne({ email: session.user.email })
+        if (dbUser) {
+          userId = dbUser._id.toString()
+        }
+      }
     }
 
     const agents = await Agent.find({ userId: userId })
@@ -65,6 +73,14 @@ export async function POST(request: NextRequest) {
         )
       }
       userId = session.user.id
+
+      // RESILIENCE: If userId is not a valid ObjectId, try to find the user by email
+      if (!/^[0-9a-fA-F]{24}$/.test(userId) && session.user.email) {
+        const dbUser = await User.findOne({ email: session.user.email })
+        if (dbUser) {
+          userId = dbUser._id.toString()
+        }
+      }
     }
 
     const {
@@ -77,7 +93,9 @@ export async function POST(request: NextRequest) {
       guardrails,
       memoryMode,
       responseLength,
-      safetyFilters
+      safetyFilters,
+      tools,
+      apiKeys
     } = await request.json()
 
     // Validation
@@ -113,6 +131,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Prevent rapid duplicates (e.g. from double clicks)
+    const recentDuplicate = await Agent.findOne({
+      userId,
+      name,
+      createdAt: { $gt: new Date(Date.now() - 10000) } // Created in last 10s
+    })
+
+    if (recentDuplicate) {
+      return NextResponse.json(
+        { message: 'Agent created successfully', agent: recentDuplicate }, 
+        { status: 201 }
+      )
+    }
+
     // Create agent
     const agent = await Agent.create({
       userId: userId,
@@ -125,7 +157,9 @@ export async function POST(request: NextRequest) {
       guardrails: guardrails || [],
       memoryMode: memoryMode || 'session',
       responseLength: responseLength || 'medium',
-      safetyFilters: safetyFilters !== undefined ? safetyFilters : true
+      safetyFilters: safetyFilters !== undefined ? safetyFilters : true,
+      tools: tools || ['web_search', 'visit_url'],
+      apiKeys: apiKeys || {}
     })
 
     // Update user's agent count

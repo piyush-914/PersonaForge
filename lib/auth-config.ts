@@ -2,23 +2,11 @@ import { NextAuthOptions } from "next-auth"
 import GoogleProvider from "next-auth/providers/google"
 import GitHubProvider from "next-auth/providers/github"
 import CredentialsProvider from "next-auth/providers/credentials"
-import { MongoDBAdapter } from "@auth/mongodb-adapter"
-import { MongoClient } from "mongodb"
 import connectDB from "./mongodb"
 import User from "@/models/User"
 import { verifyPassword } from "./auth"
 
-// Create MongoDB client for NextAuth adapter
-const client = new MongoClient(process.env.MONGODB_URI!, {
-  serverApi: {
-    version: '1' as any,
-    strict: true,
-    deprecationErrors: true,
-  }
-})
-
 export const authOptions: NextAuthOptions = {
-  adapter: MongoDBAdapter(client),
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,

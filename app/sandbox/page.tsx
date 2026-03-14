@@ -99,6 +99,7 @@ interface Message {
   type: "user" | "ai"
   content: string
   timestamp: string
+  toolActivity?: { tool: string, params: any }[]
 }
 
 interface LogEntry {
@@ -198,12 +199,10 @@ export default function SandboxPage() {
   const callSandboxAPI = async (messageContent: string) => {
     setIsTyping(true)
     
-    // Add log for processing
     const processingLogId = Date.now()
     setLogs(prev => [...prev, { id: processingLogId, type: "info", message: "Processing prompt...", timestamp: new Date().toLocaleTimeString() }])
 
     try {
-      // Prepare history (limit to last 10 messages)
       const messageHistory = messages.map(m => ({
         role: m.type === 'user' ? 'user' : 'assistant',
         content: m.content
@@ -227,11 +226,22 @@ export default function SandboxPage() {
           id: Date.now(),
           type: "ai",
           content: data.content,
-          timestamp: new Date().toLocaleTimeString()
+          timestamp: new Date().toLocaleTimeString(),
+          toolActivity: data.toolActivity
         }
         setMessages(prev => [...prev, aiMessage])
         
-        // Update logs based on content
+        if (data.toolActivity && data.toolActivity.length > 0) {
+          data.toolActivity.forEach((ta: any) => {
+            setLogs(prev => [...prev, { 
+              id: Date.now() + Math.random(), 
+              type: "success", 
+              message: `Executed tool: ${ta.tool}`, 
+              timestamp: new Date().toLocaleTimeString() 
+            }])
+          })
+        }
+
         if (data.content.includes("safety guidelines") || data.content.includes("violate")) {
           setLogs(prev => [
             ...prev,
@@ -252,6 +262,7 @@ export default function SandboxPage() {
       setIsTyping(false)
     }
   }
+
 
   const handleSend = () => {
     if (!inputValue.trim() || isTyping) return
@@ -446,6 +457,18 @@ export default function SandboxPage() {
                       {message.type === "user" ? "You" : "AI Agent"}
                     </div>
                     <p className="font-medium">{message.content}</p>
+                    
+                    {message.toolActivity && message.toolActivity.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-black/10 space-y-1">
+                        {message.toolActivity.map((ta, idx) => (
+                          <div key={idx} className="flex items-center gap-2 text-xs bg-black/5 p-1.5 rounded border border-black/10">
+                            <Zap className="w-3 h-3 text-[#FF7A00]" />
+                            <span className="font-bold">Used {ta.tool}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
                     <div className="text-xs text-gray-500 mt-2">{message.timestamp}</div>
                   </div>
                 </motion.div>
@@ -582,6 +605,7 @@ export default function SandboxPage() {
           </Card>
         </aside>
       </div>
+
     </div>
   )
 }

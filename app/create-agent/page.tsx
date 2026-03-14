@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { ArrowLeft, Sparkles, TestTube, Save, Rocket, Database, Shield, MessageSquare } from "lucide-react"
+import { ArrowLeft, Sparkles, TestTube, Save, Rocket, Database, Shield, MessageSquare, Zap } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { useRouter } from "next/navigation"
 
@@ -51,6 +51,7 @@ interface AgentConfig {
   responseStyle: string
   guardrails: string[]
   memory: string
+  tools?: string[]
 }
 
 const FORGE_STEPS = [
@@ -68,8 +69,12 @@ export default function CreateAgentPage() {
   const [memoryMode, setMemoryMode] = useState("session")
   const [responseLength, setResponseLength] = useState("medium")
   const [safetyFilters, setSafetyFilters] = useState(true)
+  const [selectedTools, setSelectedTools] = useState<string[]>(['web_search', 'visit_url'])
+  const [agentApiKeys, setAgentApiKeys] = useState<Record<string, string>>({})
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState("")
+  const [keyPrompt, setKeyPrompt] = useState<{show: boolean, toolId: string, toolName: string}>({show: false, toolId: '', toolName: ''})
+  const [tempKeyValue, setTempKeyValue] = useState("")
   
   const { user, token, loading: authLoading } = useAuth()
   const router = useRouter()
@@ -107,6 +112,14 @@ export default function CreateAgentPage() {
     return null
   }
 
+  const getRequiredKey = (toolId: string) => {
+    switch(toolId) {
+      case 'send_email': return 'SMTP_PASSWORD';
+      case 'create_calendar_event': return 'GOOGLE_CALENDAR_API_KEY';
+      default: return null;
+    }
+  }
+
   const handleForgeAgent = async () => {
     if (!description.trim()) return
     setIsGenerating(true)
@@ -128,8 +141,7 @@ export default function CreateAgentPage() {
         if (data.memory) {
           setMemoryMode(data.memory)
         }
-        // Auto-save to DB so it shows up in dashboard immediately
-        await autoSaveAgent(data, description)
+        // No auto-save here to prevent duplicates. User will save manually.
       } else {
         setSaveError(data.error || 'Failed to generate agent configuration. Please try again.')
       }
@@ -140,35 +152,6 @@ export default function CreateAgentPage() {
     }
   }
 
-  const autoSaveAgent = async (config: AgentConfig, desc: string) => {
-    if (!token && !user) return
-    
-    try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      }
-      if (token) headers['Authorization'] = `Bearer ${token}`
-
-      await fetch('/api/agents', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          name: config.agentName || config.domain + " Agent",
-          description: desc,
-          systemPrompt: config.systemPrompt,
-          tone: config.tone,
-          domain: config.domain,
-          responseStyle: config.responseStyle,
-          guardrails: config.guardrails,
-          memoryMode: config.memory || memoryMode,
-          responseLength,
-          safetyFilters
-        })
-      })
-    } catch (error) {
-      console.error("Auto-save failed:", error)
-    }
-  }
 
   const handleSaveAgent = async () => {
     if (!agentConfig || (!token && !user)) return
@@ -198,7 +181,9 @@ export default function CreateAgentPage() {
           guardrails: agentConfig.guardrails,
           memoryMode,
           responseLength,
-          safetyFilters
+          safetyFilters,
+          tools: selectedTools,
+          apiKeys: agentApiKeys
         })
       })
 
@@ -427,6 +412,56 @@ export default function CreateAgentPage() {
                   </div>
                 </button>
               </div>
+              <div className="mb-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <Zap className="w-4 h-4" />
+                  <h3 className="text-sm font-black">Agent Tools</h3>
+                </div>
+                <div className="space-y-2">
+                  {[
+                    { id: 'web_search', name: 'Web Search' },
+                    { id: 'visit_url', name: 'Visit URL' },
+                    { id: 'read_file', name: 'Read File' },
+                    { id: 'send_email', name: 'Send Email' },
+                    { id: 'create_calendar_event', name: 'Google Calendar' },
+                    { id: 'aws_docs_mcp', name: '☁️ AWS MCP Docs' },
+                   ].map((tool) => (
+                    <div key={tool.id} className="space-y-1">
+                      <button
+                        onClick={() => {
+                          const isSelected = selectedTools.includes(tool.id)
+                          if (!isSelected) {
+                            // Selecting - check if it needs a key
+                            const requiredKey = getRequiredKey(tool.id)
+                            if (requiredKey && !agentApiKeys[requiredKey]) {
+                              setKeyPrompt({ show: true, toolId: tool.id, toolName: tool.name })
+                              return
+                            }
+                            setSelectedTools([...selectedTools, tool.id])
+                          } else {
+                            // Deselecting
+                            setSelectedTools(selectedTools.filter(t => t !== tool.id))
+                          }
+                        }}
+                        className={cn(
+                          "w-full p-2 border-[3px] border-black rounded-lg font-bold flex items-center justify-between transition-all text-xs",
+                          selectedTools.includes(tool.id) ? "bg-[#FFD84D]" : "bg-[#FFF4E2]"
+                        )}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span>{tool.name}</span>
+                          {getRequiredKey(tool.id) && agentApiKeys[getRequiredKey(tool.id)!] && (
+                            <span className="text-[10px] bg-green-500 text-white px-1.5 py-0.5 rounded-full">Key Set</span>
+                          )}
+                        </div>
+                        <div className={cn("w-4 h-4 border-2 border-black rounded flex items-center justify-center", selectedTools.includes(tool.id) ? "bg-black" : "bg-white")}>
+                          {selectedTools.includes(tool.id) && <div className="w-2 h-2 bg-[#FFD84D] rounded-sm" />}
+                        </div>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </Card>
             <Card className="bg-[#5CC8FF]">
               <h3 className="text-lg font-black mb-4">Actions</h3>
@@ -473,6 +508,71 @@ export default function CreateAgentPage() {
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {keyPrompt.show && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="w-full max-w-md bg-[#FFF4E2] border-[4px] border-black rounded-2xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-8"
+            >
+              <div className="flex items-center gap-4 mb-6 text-[#FF7A00]">
+                <div className="p-3 bg-[#FF7A00]/10 rounded-xl border-2 border-black">
+                  <Shield className="w-8 h-8" />
+                </div>
+                <h2 className="text-3xl font-black text-black">API Key Required</h2>
+              </div>
+              
+              <p className="text-gray-700 font-bold mb-6 text-lg leading-tight">
+                The <span className="text-[#FF7A00]">{keyPrompt.toolName}</span> tool requires an API key to function. 
+                Please enter your <code className="bg-gray-200 px-1.5 py-0.5 rounded border border-gray-400 text-sm font-mono">{getRequiredKey(keyPrompt.toolId)}</code> below.
+              </p>
+
+              <div className="space-y-6">
+                <div>
+                  <input
+                    type="password"
+                    value={tempKeyValue}
+                    onChange={(e) => setTempKeyValue(e.target.value)}
+                    placeholder={`Enter ${getRequiredKey(keyPrompt.toolId)}...`}
+                    className="w-full px-6 py-4 text-lg border-[3px] border-black rounded-xl bg-white focus:outline-none focus:ring-4 focus:ring-[#FF7A00]/30 transition-all font-bold placeholder:text-gray-400"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <Button 
+                    className="bg-[#FF7A00] text-white py-6"
+                    onClick={() => {
+                      const requiredKey = getRequiredKey(keyPrompt.toolId)
+                      if (requiredKey && tempKeyValue.trim()) {
+                        setAgentApiKeys(prev => ({ ...prev, [requiredKey]: tempKeyValue.trim() }))
+                        setSelectedTools(prev => [...prev, keyPrompt.toolId])
+                        setKeyPrompt({ show: false, toolId: '', toolName: '' })
+                        setTempKeyValue("")
+                      }
+                    }}
+                  >
+                    Confirm Key
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="bg-white py-6"
+                    onClick={() => {
+                      setKeyPrompt({ show: false, toolId: '', toolName: '' })
+                      setTempKeyValue("")
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
